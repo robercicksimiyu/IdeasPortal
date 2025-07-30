@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,73 +12,226 @@ import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
 
+interface Country {
+  id: number
+  name: string
+}
+
+interface Department {
+  id: number
+  department_name: string
+  department_code: string
+  country: string
+  cluster: string
+}
+
+interface Cluster {
+  id: number
+  name: string
+  country: string
+}
+
+interface ApiPromoter {
+  id: number
+  name: string
+}
+
 export function IdeaSubmissionForm() {
   const [formData, setFormData] = useState({
     subject: "",
     description: "",
     country: "",
     department: "",
-    workflowVersion: "v1" as "v1" | "v2",
+    cluster: "",
+    apiPromoter: "",
+    workflowVersion: "v2" as "v1" | "v2",
     expectedBenefit: "",
     implementationEffort: "",
   })
 
+  const [countries, setCountries] = useState<Country[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [clusters, setClusters] = useState<Cluster[]>([])
+  const [apiPromoters, setApiPromoters] = useState<ApiPromoter[]>([])
+  const [loading, setLoading] = useState(true)
+
   const router = useRouter()
   const { toast } = useToast()
 
-  const countries = ["USA", "UK", "Canada", "Australia", "Germany", "France", "Japan"]
-  const departments = [
-    "Engineering",
-    "Customer Success",
-    "Finance",
-    "Human Resources",
-    "Marketing",
-    "Sales",
-    "Operations",
-    "Legal",
-  ]
+  // Fetch initial data
+  useEffect(() => {
+    fetchCountries()
+  }, [])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch departments and clusters when country changes
+  useEffect(() => {
+    if (formData.country) {
+      fetchDepartments(formData.country)
+      fetchClusters(formData.country)
+      fetchApiPromoters(formData.country)
+    } else {
+      setDepartments([])
+      setClusters([])
+      setApiPromoters([])
+    }
+    // Reset dependent fields when country changes
+    setFormData((prev) => ({
+      ...prev,
+      department: "",
+      cluster: "",
+      apiPromoter: "",
+    }))
+  }, [formData.country])
+
+  const fetchCountries = async () => {
+    try {
+      const response = await fetch("/api/form-data/countries")
+      if (response.ok) {
+        const data = await response.json()
+        setCountries(data)
+      }
+    } catch (error) {
+      console.error("Error fetching countries:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load countries",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchDepartments = async (country: string) => {
+    try {
+      const response = await fetch(`/api/form-data/departments?country=${encodeURIComponent(country)}`)
+      if (response.ok) {
+        const data = await response.json()
+        setDepartments(data)
+      }
+    } catch (error) {
+      console.error("Error fetching departments:", error)
+    }
+  }
+
+  const fetchClusters = async (country: string) => {
+    try {
+      const response = await fetch(`/api/form-data/clusters?country=${encodeURIComponent(country)}`)
+      if (response.ok) {
+        const data = await response.json()
+        setClusters(data)
+      }
+    } catch (error) {
+      console.error("Error fetching clusters:", error)
+    }
+  }
+
+  const fetchApiPromoters = async (country: string, department?: string) => {
+    try {
+      const params = new URLSearchParams({ country })
+      if (department) params.append("department", department)
+
+      const response = await fetch(`/api/form-data/api-promoters?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setApiPromoters(data)
+      }
+    } catch (error) {
+      console.error("Error fetching API promoters:", error)
+    }
+  }
+
+  // Refetch API promoters when department changes
+  useEffect(() => {
+    if (formData.country && formData.department) {
+      fetchApiPromoters(formData.country, formData.department)
+    }
+    // Reset API promoter when department changes
+    setFormData((prev) => ({ ...prev, apiPromoter: "" }))
+  }, [formData.department])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Generate mock ID
-    const ideaId = `ID-${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`
+    try {
+      const response = await fetch("/api/ideas", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
 
-    // In real app, this would be an API call
-    console.log("Submitting idea:", { ...formData, id: ideaId })
+      if (!response.ok) {
+        throw new Error("Failed to submit idea")
+      }
 
-    toast({
-      title: "Idea Submitted Successfully!",
-      description: `Your idea has been assigned ID: ${ideaId}`,
-    })
+      const result = await response.json()
+      toast({
+        title: "Idea Submitted Successfully!",
+        description: `Your idea has been assigned ID: ${result.idea_number}`,
+      })
 
-    // Reset form
-    setFormData({
-      subject: "",
-      description: "",
-      country: "",
-      department: "",
-      workflowVersion: "v1",
-      expectedBenefit: "",
-      implementationEffort: "",
-    })
+      // Reset form
+      setFormData({
+        subject: "",
+        description: "",
+        country: "",
+        department: "",
+        cluster: "",
+        apiPromoter: "",
+        workflowVersion: "v2",
+        expectedBenefit: "",
+        implementationEffort: "",
+      })
 
-    // Redirect to dashboard after a short delay
-    setTimeout(() => {
-      router.push("/dashboard")
-    }, 2000)
+      // Redirect to dashboard after a short delay
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 2000)
+    } catch (error) {
+      console.error("Submit error:", error)
+      toast({
+        title: "Submission Failed",
+        description: "Please try again later.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card className="max-w-2xl">
+        <CardContent className="p-6 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading form data...</p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>Submit New Idea</CardTitle>
+        <CardTitle>Submit New Kaizen Idea</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="subject">Idea Subject *</Label>
+            <Input
+              id="subject"
+              value={formData.subject}
+              onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))}
+              placeholder="Brief description of your idea"
+              required
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="country">Country *</Label>
+              <Label htmlFor="country">Affected Country *</Label>
               <Select
                 value={formData.country}
                 onValueChange={(value) => setFormData((prev) => ({ ...prev, country: value }))}
@@ -90,8 +242,8 @@ export function IdeaSubmissionForm() {
                 </SelectTrigger>
                 <SelectContent>
                   {countries.map((country) => (
-                    <SelectItem key={country} value={country}>
-                      {country}
+                    <SelectItem key={country.id} value={country.name}>
+                      {country.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -104,14 +256,59 @@ export function IdeaSubmissionForm() {
                 value={formData.department}
                 onValueChange={(value) => setFormData((prev) => ({ ...prev, department: value }))}
                 required
+                disabled={!formData.country}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue placeholder={formData.country ? "Select department" : "Select country first"} />
                 </SelectTrigger>
                 <SelectContent>
                   {departments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
+                    <SelectItem key={dept.id} value={dept.department_name}>
+                      {dept.department_name} ({dept.department_code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="cluster">Affected Cluster *</Label>
+              <Select
+                value={formData.cluster}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, cluster: value }))}
+                required
+                disabled={!formData.country}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.country ? "Select cluster" : "Select country first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clusters.map((cluster) => (
+                    <SelectItem key={cluster.id} value={cluster.name}>
+                      {cluster.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apiPromoter">API Promoter *</Label>
+              <Select
+                value={formData.apiPromoter}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, apiPromoter: value }))}
+                required
+                disabled={!formData.country}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.country ? "Select API promoter" : "Select country first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {apiPromoters.map((promoter) => (
+                    <SelectItem key={promoter.id} value={promoter.name}>
+                      {promoter.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -120,18 +317,7 @@ export function IdeaSubmissionForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="subject">Idea Subject *</Label>
-            <Input
-              id="subject"
-              value={formData.subject}
-              onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))}
-              placeholder="Brief description of your idea"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Detailed Description *</Label>
+            <Label htmlFor="description">Kaizen Idea *</Label>
             <Textarea
               id="description"
               value={formData.description}

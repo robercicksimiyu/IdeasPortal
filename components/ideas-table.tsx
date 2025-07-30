@@ -166,7 +166,7 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
                         </Button>
                         {(userRole === "API Promoter" ||
                           userRole === "Ideas Committee" ||
-                          userRole === "Line Executive") && (
+                          userRole === "Line Executive" || "Admin") && (
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-green-500/10">
                             <Edit className="h-4 w-4 text-green-600" />
                           </Button>

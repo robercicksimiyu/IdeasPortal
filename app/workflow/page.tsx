@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { IdeaSubmissionForm } from "@/components/idea-submission-form"
+import { WorkflowOverview } from "@/components/workflow-overview"
 import type { User } from "@/lib/supabase"
 
-export default function SubmitPage() {
+export default function WorkflowPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -51,11 +51,11 @@ export default function SubmitPage() {
     <DashboardLayout userRole={user.role} userName={user.name}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Submit New Idea</h1>
-          <p className="text-muted-foreground">Share your improvement ideas with the team</p>
+          <h1 className="text-3xl font-bold mb-2">Workflow Overview</h1>
+          <p className="text-muted-foreground">Track ideas through different review stages and recent activity</p>
         </div>
 
-        <IdeaSubmissionForm />
+        <WorkflowOverview userRole={user.role} />
       </div>
     </DashboardLayout>
   )

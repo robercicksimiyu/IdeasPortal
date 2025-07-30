@@ -1,52 +1,86 @@
-import { sql } from "./db"
-import type { User } from "./db"
+import { Tables } from "@/app/ideas-portal-data-types"
+import { createServerClient } from "./supabase"
+
 
 export async function createOrUpdateUser(zohoUser: {
-  id: string
+  zoho_id: string
   email: string
   name: string
-  department?: string
   country?: string
-}): Promise<User> {
-  const existingUser = await sql`
-    SELECT * FROM users WHERE zoho_id = ${zohoUser.id}
-  `
+}): Promise<Tables<"users">> {
+  const supabase = createServerClient()
 
-  if (existingUser.length > 0) {
+  // Validate required fields
+  console.log("Create Database function:", zohoUser);
+  // Check if user exists
+  const { data: existingUser } = await supabase.from("users").select("*").eq("zoho_id", zohoUser.zoho_id).single()
+
+  console.log("Exisisting user:", zohoUser);
+
+  if (existingUser) {
     // Update existing user
-    const updated = await sql`
-      UPDATE users 
-      SET email = ${zohoUser.email}, 
-          name = ${zohoUser.name},
-          department = ${zohoUser.department || null},
-          country = ${zohoUser.country || null},
-          updated_at = CURRENT_TIMESTAMP
-      WHERE zoho_id = ${zohoUser.id}
-      RETURNING *
-    `
-    return updated[0] as User
+    const { data, error } = await supabase
+      .from("users")
+      .update({
+        email: zohoUser.email,
+        name: zohoUser.name,
+      })
+      .eq("zoho_id", zohoUser.zoho_id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data as Tables<"users">
   } else {
     // Create new user with default role
-    const created = await sql`
-      INSERT INTO users (zoho_id, email, name, role, department, country)
-      VALUES (${zohoUser.id}, ${zohoUser.email}, ${zohoUser.name}, 'Initiator', ${zohoUser.department || null}, ${zohoUser.country || null})
-      RETURNING *
-    `
-    return created[0] as User
+    const { data, error } = await supabase
+      .from("users")
+      .insert({
+        zoho_id: zohoUser.zoho_id,
+        email: zohoUser.email,
+        name: zohoUser.name,
+        role: "Initiator",
+        is_admin: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        country: zohoUser.country || null,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data as Tables<"users">
   }
 }
 
-export async function getUserByZohoId(zohoId: string): Promise<User | null> {
-  const result = await sql`
-    SELECT * FROM users WHERE zoho_id = ${zohoId}
-  `
-  return result.length > 0 ? (result[0] as User) : null
+export async function getUserByZohoId(zohoId: string): Promise<Tables<"users"> | null> {
+  const supabase = createServerClient()
+
+  const { data, error } = await supabase.from("users").select("*").eq("zoho_id", zohoId).single()
+
+  if (error && error.code !== "PGRST116") throw error
+  return data as Tables<"users"> | null
+}
+
+export async function getUserById(userId: number): Promise<Tables<"users"> | null> {
+  const supabase = createServerClient()
+
+  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
+
+  if (error && error.code !== "PGRST116") throw error
+  return data as Tables<"users"> | null
 }
 
 export async function updateUserRole(userId: number, role: string): Promise<void> {
-  await sql`
-    UPDATE users 
-    SET role = ${role}, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `
+  const supabase = createServerClient()
+
+  const { error } = await supabase
+    .from("users")
+    .update({
+      role,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId)
+
+  if (error) throw error
 }

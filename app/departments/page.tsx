@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { IdeaSubmissionForm } from "@/components/idea-submission-form"
+import { DepartmentManagement } from "@/components/department-management"
 import type { User } from "@/lib/supabase"
 
-export default function SubmitPage() {
+export default function DepartmentsPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -21,6 +21,12 @@ export default function SubmitPage() {
       if (response.ok) {
         const userData = await response.json()
         setUser(userData)
+
+        // Check if user is admin
+        if (!userData.is_admin) {
+          router.push("/dashboard")
+          return
+        }
       } else {
         router.push("/")
       }
@@ -43,19 +49,26 @@ export default function SubmitPage() {
     )
   }
 
-  if (!user) {
-    return null
+  if (!user || !user.is_admin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+          <p className="text-muted-foreground">You need admin privileges to access this page.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <DashboardLayout userRole={user.role} userName={user.name}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Submit New Idea</h1>
-          <p className="text-muted-foreground">Share your improvement ideas with the team</p>
+          <h1 className="text-3xl font-bold mb-2">Department Management</h1>
+          <p className="text-muted-foreground">Manage departments and sync with location data</p>
         </div>
 
-        <IdeaSubmissionForm />
+        <DepartmentManagement />
       </div>
     </DashboardLayout>
   )

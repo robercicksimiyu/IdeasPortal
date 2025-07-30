@@ -1,4 +1,4 @@
-import { sql } from "./db"
+import { createServerClient } from "./supabase"
 
 export async function sendNotificationEmail(
   recipientEmail: string,
@@ -6,11 +6,20 @@ export async function sendNotificationEmail(
   message: string,
   ideaId?: number,
 ): Promise<void> {
+  const supabase = createServerClient()
+
   // Log email to database
-  await sql`
-    INSERT INTO email_notifications (idea_id, recipient_email, subject, message, status)
-    VALUES (${ideaId || null}, ${recipientEmail}, ${subject}, ${message}, 'pending')
-  `
+  const { error } = await supabase.from("email_notifications").insert({
+    idea_id: ideaId || null,
+    recipient_email: recipientEmail,
+    subject,
+    message,
+    status: "pending",
+  })
+
+  if (error) {
+    console.error("Error logging email notification:", error)
+  }
 
   // In production, integrate with email service (SendGrid, AWS SES, etc.)
   console.log(`Email notification sent to ${recipientEmail}:`, { subject, message })
@@ -26,11 +35,14 @@ export async function sendNotificationEmail(
     })
     
     // Update status to sent
-    await sql`
-      UPDATE email_notifications 
-      SET status = 'sent', sent_at = CURRENT_TIMESTAMP
-      WHERE recipient_email = ${recipientEmail} AND subject = ${subject}
-    `
+    await supabase
+      .from('email_notifications')
+      .update({ 
+        status: 'sent', 
+        sent_at: new Date().toISOString() 
+      })
+      .eq('recipient_email', recipientEmail)
+      .eq('subject', subject)
   } catch (error) {
     console.error('Failed to send email:', error)
   }

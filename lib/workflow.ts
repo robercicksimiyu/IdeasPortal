@@ -1,6 +1,6 @@
-import { sql } from "./db"
-import type { Idea, WorkflowStep } from "./db"
+import { createServerClient } from "./supabase"
 import { sendNotificationEmail } from "./email"
+import { Tables } from "@/app/ideas-portal-data-types"
 
 export const WORKFLOW_STEPS = {
   API_PROMOTER_REVIEW: "API_PROMOTER_REVIEW",
@@ -17,14 +17,21 @@ export async function createWorkflowStep(
   ideaId: number,
   stepName: string,
   assignedRole: string,
-  assignedUserId?: number,
-): Promise<WorkflowStep> {
-  const result = await sql`
-    INSERT INTO workflow_steps (idea_id, step_name, assigned_role, assigned_user_id)
-    VALUES (${ideaId}, ${stepName}, ${assignedRole}, ${assignedUserId || null})
-    RETURNING *
-  `
-  return result[0] as WorkflowStep
+): Promise<Tables<"workflow_steps">> {
+  const supabase = createServerClient()
+
+  const { data, error } = await supabase
+    .from("workflow_steps")
+    .insert({
+      idea_id: ideaId,
+      step_name: stepName,
+      assigned_role: assignedRole,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as Tables<"workflow_steps">
 }
 
 export async function processReview(
@@ -34,30 +41,36 @@ export async function processReview(
   comments?: string,
   score?: number,
 ): Promise<void> {
-  // Get current idea details
-  const ideaResult = await sql`
-    SELECT i.*, u.name as submitter_name, u.email as submitter_email
-    FROM ideas i
-    JOIN users u ON i.submitter_id = u.id
-    WHERE i.id = ${ideaId}
-  `
+  const supabase = createServerClient()
 
-  if (ideaResult.length === 0) {
-    throw new Error("Idea not found")
+  // Get current idea details with submitter info
+  const { data: ideaData, error: ideaError } = await supabase
+    .from("ideas")
+    .select(`
+      *`)
+    .eq("id", ideaId)
+    .single()
+
+  if (ideaError) throw ideaError
+
+  const idea = ideaData as Tables<"ideas"> & {
+    users: { name: string; email: string }
   }
 
-  const idea = ideaResult[0] as Idea & { submitter_email: string }
-
   // Update current workflow step
-  await sql`
-    UPDATE workflow_steps 
-    SET status = 'Completed',
-        action_taken = ${action},
-        comments = ${comments || null},
-        score = ${score || null},
-        completed_at = CURRENT_TIMESTAMP
-    WHERE idea_id = ${ideaId} AND status = 'Pending'
-  `
+  const { error: updateStepError } = await supabase
+    .from("workflow_steps")
+    .update({
+      status: "Completed",
+      action_taken: action,
+      comments: comments || null,
+      score: score || null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("idea_id", ideaId)
+    .eq("status", "Pending")
+
+  if (updateStepError) throw updateStepError
 
   let nextStep: WorkflowStepType | null = null
   let newStatus = idea.status
@@ -113,13 +126,16 @@ export async function processReview(
   }
 
   // Update idea status and current step
-  await sql`
-    UPDATE ideas 
-    SET status = ${newStatus},
-        current_step = ${nextStep || idea.current_step},
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${ideaId}
-  `
+  const { error: updateIdeaError } = await supabase
+    .from("ideas")
+    .update({
+      status: newStatus,
+      current_step: nextStep || idea.current_step,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ideaId)
+
+  if (updateIdeaError) throw updateIdeaError
 
   // Create next workflow step if needed
   if (nextStep) {
@@ -128,7 +144,7 @@ export async function processReview(
   }
 
   // Send notifications
-  await sendWorkflowNotifications(ideaId, action, nextStep, idea)
+  //await sendWorkflowNotifications(ideaId, action, nextStep, idea)
 }
 
 function getAssignedRoleForStep(step: WorkflowStepType): string {
@@ -152,8 +168,10 @@ async function sendWorkflowNotifications(
   ideaId: number,
   action: string,
   nextStep: WorkflowStepType | null,
-  idea: Idea & { submitter_email: string },
+  idea: Tables<"ideas"> & { users: { name: string; email: string } },
 ): Promise<void> {
+  const supabase = createServerClient()
+
   // Get users to notify based on next step
   const recipientRoles: string[] = []
 
@@ -162,14 +180,14 @@ async function sendWorkflowNotifications(
   }
 
   // Always notify the submitter
-  const submitterEmail = idea.submitter_email
+  const submitterEmail = idea.users.email
+
+  console.log("Notifying submitter:", submitterEmail);
 
   // Get recipient emails
-  const recipients = await sql`
-    SELECT email FROM users WHERE role = ANY(${recipientRoles})
-  `
+  const { data: recipients } = await supabase.from("users").select("email").in("role", recipientRoles)
 
-  const allEmails = [submitterEmail, ...recipients.map((r) => r.email)]
+  const allEmails = [submitterEmail, ...(recipients?.map((r) => r.email) || [])]
 
   // Send notifications
   for (const email of allEmails) {
@@ -177,6 +195,7 @@ async function sendWorkflowNotifications(
       email,
       `Idea ${idea.idea_number} - Status Update`,
       `Your idea "${idea.subject}" has been ${action}d and is now in ${nextStep || "final"} stage.`,
+      ideaId,
     )
   }
 }

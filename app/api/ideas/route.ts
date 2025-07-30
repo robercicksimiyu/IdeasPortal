@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { sql } from "@/lib/db"
+import { createServerClient } from "@/lib/supabase"
 import { createWorkflowStep, WORKFLOW_STEPS } from "@/lib/workflow"
 
 export async function GET(request: NextRequest) {
@@ -10,72 +10,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user role to filter ideas
-    const userResult = await sql`
-      SELECT role FROM users WHERE id = ${userId}
-    `
+    const supabase = createServerClient()
 
-    if (userResult.length === 0) {
+    // Get user role to filter ideas
+    const { data: userData, error: userError } = await supabase.from("users").select("*").eq("zoho_id", userId).single()
+
+    console.log("User data ideas:", userData);
+
+    if (userError || !userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    const userRole = userResult[0].role
+    const userRole = userData.role
 
-    let ideas
+    let query = supabase.from("ideas").select(`
+  *,
+  users:submitter_id (
+    name
+  )
+`);
 
     // Filter ideas based on user role
     switch (userRole) {
       case "Initiator":
-        ideas = await sql`
-          SELECT i.*, u.name as submitter_name
-          FROM ideas i
-          JOIN users u ON i.submitter_id = u.id
-          WHERE i.submitter_id = ${userId}
-          ORDER BY i.created_at DESC
-        `
+        query = query.eq("submitter_id", userData.id)
         break
 
       case "API Promoter":
-        ideas = await sql`
-          SELECT i.*, u.name as submitter_name
-          FROM ideas i
-          JOIN users u ON i.submitter_id = u.id
-          WHERE i.current_step = ${WORKFLOW_STEPS.API_PROMOTER_REVIEW}
-          ORDER BY i.created_at DESC
-        `
+        query = query.eq("current_step", WORKFLOW_STEPS.API_PROMOTER_REVIEW)
         break
 
       case "Ideas Committee":
-        ideas = await sql`
-          SELECT i.*, u.name as submitter_name
-          FROM ideas i
-          JOIN users u ON i.submitter_id = u.id
-          WHERE i.current_step IN (${WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW}, ${WORKFLOW_STEPS.MONITORING})
-          ORDER BY i.created_at DESC
-        `
+        query = query.in("current_step", [WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW, WORKFLOW_STEPS.MONITORING])
         break
 
       case "Line Executive":
-        ideas = await sql`
-          SELECT i.*, u.name as submitter_name
-          FROM ideas i
-          JOIN users u ON i.submitter_id = u.id
-          WHERE i.current_step = ${WORKFLOW_STEPS.LINE_EXECUTIVE_REVIEW}
-          ORDER BY i.created_at DESC
-        `
+        query = query.eq("current_step", WORKFLOW_STEPS.LINE_EXECUTIVE_REVIEW)
         break
 
       default:
         // Admin or other roles see all ideas
-        ideas = await sql`
-          SELECT i.*, u.name as submitter_name
-          FROM ideas i
-          JOIN users u ON i.submitter_id = u.id
-          ORDER BY i.created_at DESC
-        `
+        break
     }
 
-    return NextResponse.json(ideas)
+    const { data: ideas, error } = await query.order("created_at", { ascending: false })
+
+    if (error) throw error
+
+    // Transform the data to match expected format
+    const transformedIdeas =
+      ideas?.map((idea) => ({
+        ...idea,
+        submitter_name: idea.users?.name || "Unknown",
+      })) || []
+
+    return NextResponse.json(transformedIdeas)
   } catch (error) {
     console.error("Error fetching ideas:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -84,10 +73,22 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServerClient()
     const userId = request.cookies.get("user_id")?.value
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("zoho_id", userId)
+      .single()
+
+    if (userError || !userData) {
+      console.error("User lookup error:", userError)
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
     const body = await request.json()
@@ -100,35 +101,95 @@ export async function POST(request: NextRequest) {
       expectedBenefit,
       implementationEffort,
       priority = "Medium",
+      status ="Submitted for review"
     } = body
 
-    // Generate idea number
-    const ideaCount = await sql`SELECT COUNT(*) as count FROM ideas`
-    const ideaNumber = `ID-${String(Number(ideaCount[0].count) + 1).padStart(3, "0")}`
+      console.log("Creating idea with data:", body);
+    // Enhanced validation
+    if (!subject || !description) {
+      return NextResponse.json({ 
+        error: "Missing required fields", 
+        details: { subject: !subject, description: !description }
+      }, { status: 400 })
+    }
 
-    // Create idea
-    const ideaResult = await sql`
-      INSERT INTO ideas (
-        idea_number, subject, description, country, department,
-        workflow_version, expected_benefit, implementation_effort,
-        priority, submitter_id, current_step
-      )
-      VALUES (
-        ${ideaNumber}, ${subject}, ${description}, ${country}, ${department},
-        ${workflowVersion}, ${expectedBenefit}, ${implementationEffort},
-        ${priority}, ${userId}, ${WORKFLOW_STEPS.API_PROMOTER_REVIEW}
-      )
-      RETURNING *
-    `
+    // More robust count query with error handling
+    const { count, error: countError } = await supabase
+      .from("ideas")
+      .select("*", { count: "exact", head: true })
 
-    const idea = ideaResult[0]
+    if (countError) {
+      console.error("Count query error:", countError)
+      return NextResponse.json({ error: "Failed to generate idea number" }, { status: 500 })
+    }
 
-    // Create initial workflow step
-    await createWorkflowStep(idea.id, WORKFLOW_STEPS.API_PROMOTER_REVIEW, "API Promoter")
+    const ideaNumber = `ID-${String((count || 0) + 1).padStart(3, "0")}`
+
+    // Prepare insert data with explicit null handling
+    const insertData = {
+      idea_number: ideaNumber,
+      subject: subject.trim(),
+      description: description.trim(),
+      country: country || null,
+      department: department || null,
+      workflow_version: workflowVersion || null,
+      expected_benefit: expectedBenefit || null,
+      implementation_effort: implementationEffort || null,
+      priority,
+      status,
+      submitter_id: userData.id,
+      current_step: WORKFLOW_STEPS.API_PROMOTER_REVIEW,
+      created_at: new Date().toISOString(), // Explicit timestamp
+    }
+
+    console.log("Attempting to insert:", insertData)
+
+    const { data: idea, error: ideaError } = await supabase
+      .from("ideas")
+      .insert(insertData)
+      .select()
+      .single()
+
+    if (ideaError) {
+      console.error("Insert error details:", {
+        message: ideaError.message,
+        details: ideaError.details,
+        hint: ideaError.hint,
+        code: ideaError.code
+      })
+      
+      // More specific error handling
+      if (ideaError.code === '23505') {
+        return NextResponse.json({ error: "Duplicate idea number" }, { status: 409 })
+      }
+      if (ideaError.code === '23503') {
+        return NextResponse.json({ error: "Foreign key constraint violation" }, { status: 400 })
+      }
+      if (ideaError.code === '23502') {
+        return NextResponse.json({ error: "Missing required field" }, { status: 400 })
+      }
+      
+      return NextResponse.json({ 
+        error: "Insert failed", 
+        details: ideaError.message 
+      }, { status: 500 })
+    }
+
+    // Wrap workflow step creation in try-catch
+    try {
+      await createWorkflowStep(idea.id, WORKFLOW_STEPS.API_PROMOTER_REVIEW, "API Promoter")
+    } catch (workflowError) {
+      console.error("Workflow step creation failed:", workflowError)
+      // Optionally rollback the idea creation or continue without failing
+      // For now, we'll log but not fail the entire operation
+    }
 
     return NextResponse.json(idea)
   } catch (error) {
-    console.error("Error creating idea:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Unhandled error in POST /api/ideas:", error)
+    return NextResponse.json({ 
+      error: "Internal server error",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 })
   }
 }

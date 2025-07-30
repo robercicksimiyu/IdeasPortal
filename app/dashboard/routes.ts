@@ -1,19 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getUserById, getUserByZohoId } from "@/lib/auth"
+import { getUserById } from "@/lib/auth"
 
 export async function GET(request: NextRequest) {
   try {
-
-    //console.log("cookie created:", response.cookies.get("user_id"));
     const userId = request.cookies.get("user_id")?.value
-
-    console.log("Fetching user by ID:", userId);
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await getUserByZohoId(userId)
+    const user = await getUserById(Number.parseInt(userId))
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })

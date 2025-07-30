@@ -41,6 +41,7 @@ export function ReviewInterface({ userRole }: ReviewInterfaceProps) {
     } catch (error) {
       console.error("Error fetching ideas:", error)
     } finally {
+     
       setLoading(false)
     }
   }
@@ -113,12 +114,18 @@ export function ReviewInterface({ userRole }: ReviewInterfaceProps) {
           { value: "approve", label: "Final Approval" },
           { value: "reject", label: "Reject" },
         ]
+      case "Admin":
+        return [
+          { value: "approve", label: "Approve for Implementation" },
+          { value: "escalate", label: "Escalate to Ideas Committee" },
+          { value: "reject", label: "Reject Idea" },
+        ]
       default:
         return []
     }
   }
 
-  if (!["API Promoter", "Ideas Committee", "Line Executive"].includes(userRole)) {
+  if (!["API Promoter", "Ideas Committee", "Line Executive","Admin"].includes(userRole)) {
     return (
       <Card>
         <CardContent className="p-6 text-center">
@@ -226,7 +233,7 @@ export function ReviewInterface({ userRole }: ReviewInterfaceProps) {
                           </Select>
                         </div>
 
-                        {userRole === "Ideas Committee" &&
+                        {userRole === "Ideas Committee" || userRole === "Admin"  &&
                           reviewAction === "approve" &&
                           selectedIdea.current_step !== "MONITORING" && (
                             <div className="space-y-2">

@@ -6,7 +6,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, Plus, FileText, Users, LogOut, Menu, X } from "lucide-react"
+import { LayoutDashboard, Plus, FileText, Users, LogOut, Menu, X, Building2 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 interface DashboardLayoutProps {
@@ -30,15 +30,17 @@ export function DashboardLayout({ children, userRole, userName }: DashboardLayou
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Submit Idea", href: "/submit", icon: Plus },
     { name: "Review Ideas", href: "/review", icon: FileText },
+    { name: "Workflow Overview", href: "/workflow", icon: Users },
+    { name: "Departments", href: "/departments", icon: Building2 },
   ]
 
   // Add admin navigation for API Team
-  if (userRole === "API Team") {
+  if (userRole === "Admin" || userRole === "API Team") {
     navigation.push({ name: "All Ideas", href: "/admin", icon: Users })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -46,7 +48,7 @@ export function DashboardLayout({ children, userRole, userName }: DashboardLayou
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-background border-r shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-background border-r shadow-lg transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -104,7 +106,7 @@ export function DashboardLayout({ children, userRole, userName }: DashboardLayou
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64 min-h-screen">
+      <div className="flex-1 flex flex-col min-h-screen">
         {/* Top bar with consistent height */}
         <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b h-16">
           <div className="flex items-center justify-between h-full px-6">
@@ -122,7 +124,7 @@ export function DashboardLayout({ children, userRole, userName }: DashboardLayou
         </div>
 
         {/* Page content */}
-        <main className="p-6">{children}</main>
+        <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
   )
