@@ -1,4 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
+
+export const dynamic = 'force-dynamic'
+
 import { getUserById, getUserByZohoId } from "@/lib/auth"
 
 export async function GET(request: NextRequest) {
