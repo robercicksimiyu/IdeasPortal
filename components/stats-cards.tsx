@@ -1,46 +1,136 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FileText, Clock, CheckCircle, AlertCircle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 interface StatsCardsProps {
   userRole: string
 }
 
-export function StatsCards({ userRole }: StatsCardsProps) {
-  // Mock data - in real app, this would come from API
-  const getStatsForRole = (role: string) => {
-    switch (role) {
-      case "Initiator":
-        return [
-          { title: "My Ideas", value: "12", icon: FileText, color: "text-blue-600" },
-          { title: "Pending Review", value: "3", icon: Clock, color: "text-yellow-600" },
-          { title: "Approved", value: "7", icon: CheckCircle, color: "text-green-600" },
-          { title: "Implemented", value: "2", icon: CheckCircle, color: "text-purple-600" },
-        ]
-      case "API Promoter":
-        return [
-          { title: "Pending Review", value: "8", icon: Clock, color: "text-yellow-600" },
-          { title: "Reviewed Today", value: "3", icon: FileText, color: "text-blue-600" },
-          { title: "Escalated", value: "2", icon: AlertCircle, color: "text-red-600" },
-          { title: "Approved", value: "15", icon: CheckCircle, color: "text-green-600" },
-        ]
-      case "Ideas Committee":
-        return [
-          { title: "For Review", value: "5", icon: Clock, color: "text-yellow-600" },
-          { title: "Scored Today", value: "2", icon: FileText, color: "text-blue-600" },
-          { title: "High Priority", value: "3", icon: AlertCircle, color: "text-red-600" },
-          { title: "Completed", value: "18", icon: CheckCircle, color: "text-green-600" },
-        ]
-      default:
-        return [
-          { title: "Total Ideas", value: "45", icon: FileText, color: "text-blue-600" },
-          { title: "In Progress", value: "12", icon: Clock, color: "text-yellow-600" },
-          { title: "Completed", value: "28", icon: CheckCircle, color: "text-green-600" },
-          { title: "High Priority", value: "5", icon: AlertCircle, color: "text-red-600" },
-        ]
+
+
+      
+export function StatsCards({ userRole, userId }: StatsCardsProps) {
+  const [stats, setStats] = useState([{ title: "Loading...", value: "0", icon: FileText, color: "text-blue-600" }])
+
+  useEffect(() => {
+    fetchStats()
+  }, [userRole])
+
+  const fetchStats = async () => {
+    try {
+      // Get stats based on user role
+      const statsData = await getStatsForRole(userRole)
+      setStats(statsData)
+    } catch (error) {
+      console.error("Error fetching stats:", error)
     }
   }
 
-  const stats = getStatsForRole(userRole)
+  
+
+  const getStatsForRole = async (role: string) => {
+    switch (role) {
+      case "Initiator":
+        const { count: myIdeas } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("submitter_id", userId) // This should be dynamic based on current user
+
+        const { count: pending } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("submitter_id", userId)
+          .in("status", ["Submitted", "Pending Review"])
+
+        const { count: approved } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("submitter_id", userId)
+          .in("status", ["Approved for Implementation", "Under Monitoring"])
+
+        const { count: implemented } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("submitter_id", userId)
+          .eq("status", "Completed")
+
+        return [
+          { title: "My Ideas", value: (myIdeas || 0).toString(), icon: FileText, color: "text-blue-600" },
+          { title: "Pending Review", value: (pending || 0).toString(), icon: Clock, color: "text-yellow-600" },
+          { title: "Approved", value: (approved || 0).toString(), icon: CheckCircle, color: "text-green-600" },
+          { title: "Implemented", value: (implemented || 0).toString(), icon: CheckCircle, color: "text-purple-600" },
+        ]
+
+      case "API Promoter":
+        const { count: pendingReview } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("current_step", "API_PROMOTER_REVIEW")
+
+        const { count: reviewedToday } = await supabase
+          .from("workflow_steps")
+          .select("*", { count: "exact", head: true })
+          .eq("assigned_role", "API Promoter")
+          .eq("status", "Completed")
+          .gte("completed_at", new Date().toISOString().split("T")[0])
+
+        const { count: escalated } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["Escalated to Committee", "Escalated to Executive"])
+
+        const { count: approvedByPromoter } = await supabase
+          .from("workflow_steps")
+          .select("*", { count: "exact", head: true })
+          .eq("assigned_role", "API Promoter")
+          .eq("action_taken", "approve")
+
+        return [
+          { title: "Pending Review", value: (pendingReview || 0).toString(), icon: Clock, color: "text-yellow-600" },
+          { title: "Reviewed Today", value: (reviewedToday || 0).toString(), icon: FileText, color: "text-blue-600" },
+          { title: "Escalated", value: (escalated || 0).toString(), icon: AlertCircle, color: "text-red-600" },
+          {
+            title: "Approved",
+            value: (approvedByPromoter || 0).toString(),
+            icon: CheckCircle,
+            color: "text-green-600",
+          },
+        ]
+
+      default:
+        const { count: totalIdeas } = await supabase.from("ideas").select("*", { count: "exact", head: true })
+
+        const { count: approved_implementation } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["Approved for Implementation"])
+
+        const { count: implemented_ideas } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .eq("current_step", "Implemented")
+
+        const { count: underReview } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .in("current_step", ["API_PROMOTER_REVIEW"])
+
+        const { count: rejected_ideas } = await supabase
+          .from("ideas")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["Rejected"])
+
+        return [
+          { title: "Implementing", value: (approved_implementation || 0).toString(), icon: Clock, color: "text-yellow-600" },
+          { title: "Under Review", value: (underReview || 0).toString(), icon: CheckCircle, color: "text-green-600" },
+          { title: "Implemented", value: (implemented_ideas || 0).toString(), icon: AlertCircle, color: "text-red-600" },
+          { title: "Rejected", value: (implemented_ideas || 0).toString(), icon: AlertCircle, color: "text-red-600" },
+        ]
+    }
+  }
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">

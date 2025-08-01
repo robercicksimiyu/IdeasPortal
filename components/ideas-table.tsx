@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Eye, Edit } from "lucide-react"
 import type { Idea } from "@/lib/db"
+import { IdeaDetailView } from "@/components/idea-detail-view"
 
 interface IdeasTableProps {
   userRole: string
@@ -15,6 +16,8 @@ interface IdeasTableProps {
 export function IdeasTable({ userRole }: IdeasTableProps) {
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedIdeaId, setSelectedIdeaId] = useState<number | null>(null)
+  const [isDetailOpen, setIsDetailOpen] = useState(false)
 
   useEffect(() => {
     fetchIdeas()
@@ -89,6 +92,11 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
     }
   }
 
+   const openIdeaDetail = (ideaId: number) => {
+    setSelectedIdeaId(ideaId)
+    setIsDetailOpen(true)
+  }
+
   if (loading) {
     return (
       <Card className="shadow-sm">
@@ -99,7 +107,7 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
     )
   }
 
-  return (
+   return (
     <Card className="shadow-sm">
       <CardHeader className="bg-muted/50 border-b">
         <div className="flex items-center justify-between">
@@ -121,11 +129,10 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
                 <TableRow className="bg-muted/50">
                   <TableHead className="font-semibold">ID</TableHead>
                   <TableHead className="font-semibold">Subject</TableHead>
-                  <TableHead className="font-semibold">Country</TableHead>
+                  <TableHead className="font-semibold">Benefit</TableHead>
                   <TableHead className="font-semibold">Department</TableHead>
+                  <TableHead className="font-semibold">Country</TableHead>                  
                   <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold">Priority</TableHead>
-                  <TableHead className="font-semibold">Workflow</TableHead>
                   <TableHead className="font-semibold">Submitted</TableHead>
                   <TableHead className="font-semibold">Actions</TableHead>
                 </TableRow>
@@ -141,32 +148,37 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
                     <TableCell>
                       <div className="flex items-center">
                         <div className="w-4 h-3 rounded-sm bg-muted mr-2"></div>
-                        <span className="text-sm">{idea.country}</span>
+                        <span className="text-sm">{idea.expected_benefit}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{idea.department}</TableCell>
                     <TableCell>
+                      <div className="flex items-center">
+                        <div className="w-4 h-3 rounded-sm bg-muted mr-2"></div>
+                        <span className="text-sm">{idea.country}</span>
+                      </div>
+                    </TableCell>
+                    
+                    <TableCell>
                       <Badge className={`${getStatusColor(idea.status)} font-medium`}>{idea.status}</Badge>
                     </TableCell>
-                    <TableCell>
-                      <Badge className={`${getPriorityColor(idea.priority)} font-medium`}>{idea.priority}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {idea.workflow_version}
-                      </Badge>
-                    </TableCell>
+                    
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(idea.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-blue-500/10">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:bg-blue-500/10"
+                          onClick={() => openIdeaDetail(idea.id)}
+                        >
                           <Eye className="h-4 w-4 text-blue-600" />
                         </Button>
                         {(userRole === "API Promoter" ||
                           userRole === "Ideas Committee" ||
-                          userRole === "Line Executive" || "Admin") && (
+                          userRole === "Line Executive") && (
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-green-500/10">
                             <Edit className="h-4 w-4 text-green-600" />
                           </Button>
@@ -180,6 +192,19 @@ export function IdeasTable({ userRole }: IdeasTableProps) {
           </div>
         )}
       </CardContent>
+      {selectedIdeaId && (
+        <IdeaDetailView
+          ideaId={selectedIdeaId}
+          isOpen={isDetailOpen}
+          onClose={() => {
+            setIsDetailOpen(false)
+            setSelectedIdeaId(null)
+          }}
+          userRole={userRole}
+          userId={1} // This should be the actual user ID
+          onIdeaUpdate={fetchIdeas}
+        />
+      )}
     </Card>
   )
 }

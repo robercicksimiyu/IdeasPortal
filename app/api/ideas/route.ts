@@ -23,12 +23,7 @@ export async function GET(request: NextRequest) {
 
     const userRole = userData.role
 
-    let query = supabase.from("ideas").select(`
-  *,
-  users:submitter_id (
-    name
-  )
-`);
+    let query = supabase.from("ideas").select(`*, users:submitter_id (name)`);
 
     // Filter ideas based on user role
     switch (userRole) {
@@ -37,7 +32,7 @@ export async function GET(request: NextRequest) {
         break
 
       case "API Promoter":
-        query = query.eq("current_step", WORKFLOW_STEPS.API_PROMOTER_REVIEW)
+        query = query.eq("current_step", WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW)
         break
 
       case "Ideas Committee":
@@ -46,6 +41,10 @@ export async function GET(request: NextRequest) {
 
       case "Line Executive":
         query = query.eq("current_step", WORKFLOW_STEPS.LINE_EXECUTIVE_REVIEW)
+        break
+
+      case "BU Manager":
+        query = query.eq("current_step", WORKFLOW_STEPS.IMPLEMENTATION)
         break
 
       default:
@@ -97,11 +96,12 @@ export async function POST(request: NextRequest) {
       description,
       country,
       department,
+      cluster,
+      apiPromoter,
       workflowVersion,
       expectedBenefit,
       implementationEffort,
-      priority = "Medium",
-      status ="Submitted for review"
+      attachments,
     } = body
 
       console.log("Creating idea with data:", body);
@@ -126,27 +126,23 @@ export async function POST(request: NextRequest) {
     const ideaNumber = `ID-${String((count || 0) + 1).padStart(3, "0")}`
 
     // Prepare insert data with explicit null handling
-    const insertData = {
-      idea_number: ideaNumber,
-      subject: subject.trim(),
-      description: description.trim(),
-      country: country || null,
-      department: department || null,
-      workflow_version: workflowVersion || null,
-      expected_benefit: expectedBenefit || null,
-      implementation_effort: implementationEffort || null,
-      priority,
-      status,
-      submitter_id: userData.id,
-      current_step: WORKFLOW_STEPS.API_PROMOTER_REVIEW,
-      created_at: new Date().toISOString(), // Explicit timestamp
-    }
-
-    console.log("Attempting to insert:", insertData)
-
     const { data: idea, error: ideaError } = await supabase
       .from("ideas")
-      .insert(insertData)
+      .insert({
+        idea_number: ideaNumber,
+        subject,
+        description,
+        country,
+        department,
+        cluster,
+        api_promoter: apiPromoter,
+        workflow_version: workflowVersion,
+        expected_benefit: expectedBenefit,
+        priority: "Medium", // Default priority
+        submitter_id: Number.parseInt(userData.id),
+        current_step: WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW,
+        status: "Submitted for review",
+      })
       .select()
       .single()
 
@@ -175,9 +171,30 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // Save attachments if provided
+    if (attachments && attachments.length > 0) {
+      const attachmentRecords = attachments.map((attachment: any) => ({
+        idea_id: idea.id,
+        user_id: Number.parseInt(userData.id),
+        file_name: attachment.file_name,
+        file_type: attachment.file_type,
+        file_size: attachment.file_size,
+        cloudinary_public_id: attachment.cloudinary_public_id,
+        cloudinary_url: attachment.cloudinary_url,
+        cloudinary_secure_url: attachment.cloudinary_secure_url,
+      }))
+
+      const { error: attachmentError } = await supabase.from("idea_attachments").insert(attachmentRecords)
+
+      if (attachmentError) {
+        console.error("Error saving attachments:", attachmentError)
+        // Don't fail the entire request if attachments fail
+      }
+    }
+
     // Wrap workflow step creation in try-catch
     try {
-      await createWorkflowStep(idea.id, WORKFLOW_STEPS.API_PROMOTER_REVIEW, "API Promoter")
+      await createWorkflowStep(idea.id, WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW, "API Promoter")
     } catch (workflowError) {
       console.error("Workflow step creation failed:", workflowError)
       // Optionally rollback the idea creation or continue without failing

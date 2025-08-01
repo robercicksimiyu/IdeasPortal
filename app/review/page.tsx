@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { ReviewInterface } from "@/components/review-interface"
+import { EnhancedReviewInterface } from "@/components/enhanced-review-interface"
 import type { User } from "@/lib/supabase"
 
 export default function ReviewPage() {
@@ -55,7 +55,7 @@ export default function ReviewPage() {
           <p className="text-muted-foreground">Review and process ideas assigned to your role</p>
         </div>
 
-        <ReviewInterface userRole={user.role} />
+        <EnhancedReviewInterface userRole={user.role} />
       </div>
     </DashboardLayout>
   )

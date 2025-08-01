@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
+import { FileUpload, type UploadedFile } from "@/components/file-upload"
 
 interface Country {
   id: number
@@ -47,6 +48,7 @@ export function IdeaSubmissionForm() {
     workflowVersion: "v2" as "v1" | "v2",
     expectedBenefit: "",
     implementationEffort: "",
+    attachments: [] as UploadedFile[],     
   })
 
   const [countries, setCountries] = useState<Country[]>([])
@@ -150,6 +152,11 @@ export function IdeaSubmissionForm() {
     setFormData((prev) => ({ ...prev, apiPromoter: "" }))
   }, [formData.department])
 
+  const handleFilesUploaded = (files: UploadedFile[]) => {
+    setFormData((prev) => ({ ...prev, attachments: files }))
+  }
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -160,7 +167,11 @@ export function IdeaSubmissionForm() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+         body: JSON.stringify({
+          ...formData,
+          workflowVersion: "v2", // Always use v2
+          attachments: formData.attachments,
+        }),
       })
 
       if (!response.ok) {
@@ -184,6 +195,7 @@ export function IdeaSubmissionForm() {
         workflowVersion: "v2",
         expectedBenefit: "",
         implementationEffort: "",
+        attachments: [] as UploadedFile[],  
       })
 
       // Redirect to dashboard after a short delay
@@ -337,40 +349,18 @@ export function IdeaSubmissionForm() {
               placeholder="What benefits do you expect from implementing this idea?"
               rows={3}
             />
-          </div>
+          </div>          
 
           <div className="space-y-2">
-            <Label htmlFor="implementationEffort">Implementation Effort</Label>
-            <Textarea
-              id="implementationEffort"
-              value={formData.implementationEffort}
-              onChange={(e) => setFormData((prev) => ({ ...prev, implementationEffort: e.target.value }))}
-              placeholder="Estimate the effort required to implement this idea"
-              rows={3}
+            <Label>Supporting Documents</Label>
+            <FileUpload
+              onFilesUploaded={handleFilesUploaded}
+              maxFiles={5}
+              maxSize={10 * 1024 * 1024} // 10MB
             />
           </div>
 
-          <div className="space-y-3">
-            <Label>Workflow Version</Label>
-            <RadioGroup
-              value={formData.workflowVersion}
-              onValueChange={(value: "v1" | "v2") => setFormData((prev) => ({ ...prev, workflowVersion: value }))}
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="v1" id="v1" />
-                <Label htmlFor="v1">Version 1 (Current Process)</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="v2" id="v2" />
-                <Label htmlFor="v2">Version 2 (New Process)</Label>
-              </div>
-            </RadioGroup>
-            <p className="text-sm text-muted-foreground">
-              {formData.workflowVersion === "v1"
-                ? "Ideas will be reviewed by API Promoter first, then escalated to Ideas Committee if needed."
-                : "Ideas will go directly to Divisional Ideas Committee for scoring and review."}
-            </p>
-          </div>
+          
 
           <div className="flex gap-4">
             <Button type="submit" className="flex-1">

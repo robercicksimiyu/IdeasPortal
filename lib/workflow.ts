@@ -3,11 +3,9 @@ import { sendNotificationEmail } from "./email"
 import { Tables } from "@/app/ideas-portal-data-types"
 
 export const WORKFLOW_STEPS = {
-  API_PROMOTER_REVIEW: "API_PROMOTER_REVIEW",
   IDEAS_COMMITTEE_REVIEW: "IDEAS_COMMITTEE_REVIEW",
   LINE_EXECUTIVE_REVIEW: "LINE_EXECUTIVE_REVIEW",
   IMPLEMENTATION: "IMPLEMENTATION",
-  MONITORING: "MONITORING",
   COMPLETED: "COMPLETED",
 } as const
 
@@ -77,18 +75,6 @@ export async function processReview(
 
   // Determine next step based on current step and action
   switch (idea.current_step) {
-    case WORKFLOW_STEPS.API_PROMOTER_REVIEW:
-      if (action === "approve") {
-        nextStep = WORKFLOW_STEPS.IMPLEMENTATION
-        newStatus = "Approved for Implementation"
-      } else if (action === "escalate") {
-        nextStep = WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW
-        newStatus = "Escalated to Committee"
-      } else {
-        newStatus = "Rejected"
-      }
-      break
-
     case WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW:
       if (action === "approve") {
         nextStep = WORKFLOW_STEPS.IMPLEMENTATION
@@ -111,13 +97,6 @@ export async function processReview(
       break
 
     case WORKFLOW_STEPS.IMPLEMENTATION:
-      if (action === "approve") {
-        nextStep = WORKFLOW_STEPS.MONITORING
-        newStatus = "Under Monitoring"
-      }
-      break
-
-    case WORKFLOW_STEPS.MONITORING:
       if (action === "approve") {
         nextStep = WORKFLOW_STEPS.COMPLETED
         newStatus = "Completed"
@@ -149,15 +128,13 @@ export async function processReview(
 
 function getAssignedRoleForStep(step: WorkflowStepType): string {
   switch (step) {
-    case WORKFLOW_STEPS.API_PROMOTER_REVIEW:
-      return "API Promoter"
     case WORKFLOW_STEPS.IDEAS_COMMITTEE_REVIEW:
-      return "Ideas Committee"
+      return "API Promoter"
     case WORKFLOW_STEPS.LINE_EXECUTIVE_REVIEW:
       return "Line Executive"
     case WORKFLOW_STEPS.IMPLEMENTATION:
-      return "Initiator"
-    case WORKFLOW_STEPS.MONITORING:
+      return "BU Manager"
+    case WORKFLOW_STEPS.COMPLETED:
       return "Ideas Committee"
     default:
       return "Admin"

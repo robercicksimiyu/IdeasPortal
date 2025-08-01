@@ -83,7 +83,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <StatsCards userRole={user.role} />
+        <StatsCards userRole={user.role} userId={user.id}/>
         <IdeasTable userRole={user.role} />
       </div>
     </DashboardLayout>
